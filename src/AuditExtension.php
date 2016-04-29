@@ -11,6 +11,7 @@ use Bolt\Extension\DatabaseSchemaTrait;
 use Bolt\Extension\SimpleExtension;
 use Bolt\Extension\StorageTrait;
 use Carbon\Carbon;
+use Doctrine\DBAL\Exception\TableNotFoundException;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\SyslogHandler;
 use Monolog\Logger;
@@ -48,6 +49,16 @@ class AuditExtension extends SimpleExtension
     }
 
     /**
+     * AccessControlEvents::LOGOUT_SUCCESS event callback.
+     *
+     * @param AccessControlEvent $event
+     */
+    public function onLogoutSuccess(AccessControlEvent $event)
+    {
+        $this->logEvent('Logout success', $event);
+    }
+
+    /**
      * AccessControlEvents::ACCESS_CHECK_REQUEST event callback.
      *
      * @param AccessControlEvent $event
@@ -82,12 +93,35 @@ class AuditExtension extends SimpleExtension
      */
     protected function subscribe(EventDispatcherInterface $dispatcher)
     {
-        $dispatcher->addListener(AccessControlEvents::LOGIN_SUCCESS, [$this, 'onLoginSuccess']);
-        $dispatcher->addListener(AccessControlEvents::LOGIN_FAILURE, [$this, 'onLoginFailure']);
+        $config = $this->getConfig();
 
-        $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_REQUEST, [$this, 'onAccessCheckRequest']);
-        $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_SUCCESS, [$this, 'onAccessCheckSuccess']);
-        $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_FAILURE, [$this, 'onAccessCheckFailure']);
+        if ($config['logging']['check']['request']) {
+            $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_REQUEST, [$this, 'onAccessCheckRequest']);
+        }
+        if ($config['logging']['check']['success']) {
+            $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_SUCCESS, [$this, 'onAccessCheckSuccess']);
+        }
+        if ($config['logging']['check']['failure']) {
+            $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_FAILURE, [$this, 'onAccessCheckFailure']);
+        }
+
+        if ($config['logging']['login']['success']) {
+            $dispatcher->addListener(AccessControlEvents::LOGIN_SUCCESS, [$this, 'onLoginSuccess']);
+        }
+        if ($config['logging']['login']['failure']) {
+            $dispatcher->addListener(AccessControlEvents::LOGIN_FAILURE, [$this, 'onLoginFailure']);
+        }
+
+        if ($config['logging']['logout']['success']) {
+            $dispatcher->addListener(AccessControlEvents::LOGOUT_SUCCESS, [$this, 'onLogoutSuccess']);
+        }
+
+        if ($config['logging']['reset']['request']) {
+        }
+        if ($config['logging']['reset']['success']) {
+        }
+        if ($config['logging']['reset']['failure']) {
+        }
     }
 
     /**
@@ -129,7 +163,7 @@ class AuditExtension extends SimpleExtension
     protected function registerRepositoryMappings()
     {
         return [
-            'auditlog' => [Entity\AuditLog::class => Repository\AuditLog::class],
+            'log_audit' => [Entity\AuditLog::class => Repository\AuditLog::class],
         ];
     }
 
@@ -139,7 +173,27 @@ class AuditExtension extends SimpleExtension
     protected function getDefaultConfig()
     {
         return [
-            'target' => [
+            'logging' => [
+                'check' => [
+                    'request' => false,
+                    'success' => true,
+                    'failure' => true,
+                ],
+                'login' => [
+                    'success' => true,
+                    'failure' => true,
+                ],
+                'logout' => [
+                    'success' => true,
+                    'failure' => true,
+                ],
+                'reset' => [
+                    'request' => true,
+                    'success' => true,
+                    'failure' => true,
+                ],
+            ],
+            'target'  => [
                 'database' => true,
                 'syslog'   => true,
             ],
@@ -213,6 +267,23 @@ class AuditExtension extends SimpleExtension
         $config = $this->getConfig();
 
         if ($config['target']['database']) {
+            $app = $this->getContainer();
+            $repo = $app['storage']->getRepository(Entity\AuditLog::class);
+            $entity = new Entity\AuditLog([
+                'event'    => $event->getName(),
+                'reason'   => $event->getReason(),
+                'datetime' => Carbon::createFromTimestamp($event->getDateTime()),
+                'username' => $event->getUserName(),
+                'ip'       => $event->getClientIp(),
+                'uri'      => $event->getUri(),
+                'message'  => true,
+            ]);
+
+            try {
+                $repo->save($entity);
+            } catch (TableNotFoundException $e) {
+                $app['logger.system']->critical('Audit logging failure.', ['event' => 'exception', 'exception' => $e]);
+            }
         }
         if ($config['target']['syslog']) {
             $context = $this->getContext($event);
