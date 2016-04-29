@@ -4,7 +4,12 @@ namespace Bolt\Extension\Bolt\Audit;
 
 use Bolt\Events\AccessControlEvent;
 use Bolt\Events\AccessControlEvents;
+use Bolt\Extension\Bolt\Audit\Storage\Entity;
+use Bolt\Extension\Bolt\Audit\Storage\Repository;
+use Bolt\Extension\Bolt\Audit\Storage\Schema;
+use Bolt\Extension\DatabaseSchemaTrait;
 use Bolt\Extension\SimpleExtension;
+use Bolt\Extension\StorageTrait;
 use Carbon\Carbon;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\SyslogHandler;
@@ -19,6 +24,9 @@ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
  */
 class AuditExtension extends SimpleExtension
 {
+    use StorageTrait;
+    use DatabaseSchemaTrait;
+
     /**
      * AccessControlEvents::LOGIN_SUCCESS event callback.
      *
@@ -68,6 +76,9 @@ class AuditExtension extends SimpleExtension
      */
     protected function registerServices(Application $app)
     {
+        $this->extendDatabaseSchemaServices();
+        $this->extendRepositoryMapping();
+
         $app['audit.logger'] = $app->share(
             function ($app) {
                 $ident = sprintf('bolt.%s', $app['config']->get('general/branding/name', 'Bolt'));
@@ -86,11 +97,32 @@ class AuditExtension extends SimpleExtension
     /**
      * {@inheritdoc}
      */
+    protected function registerExtensionTables()
+    {
+        return [
+            'log_audit' => Schema\Table\AuditLog::class,
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function registerRepositoryMappings()
+    {
+        return [
+            'auditlog' => [Entity\AuditLog::class => Repository\AuditLog::class],
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     protected function getDefaultConfig()
     {
         return [
-            'syslog' => [
-                'enabled' => true,
+            'target' => [
+                'database' => true,
+                'syslog'   => true,
             ],
         ];
     }
