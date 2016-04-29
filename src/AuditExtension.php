@@ -34,14 +34,7 @@ class AuditExtension extends SimpleExtension
      */
     public function onLoginSuccess(AccessControlEvent $event)
     {
-        $context = [
-            'datetime' => Carbon::createFromTimestamp($event->getDateTime()),
-            'username' => $event->getUserName(),
-            'address'  => $event->getClientIp(),
-            'target'   => $event->getUri(),
-        ];
-
-        $this->getLogger()->info('Authentication success: ' . json_encode($context));
+        $this->logEvent('Authentication success', $event);
     }
 
     /**
@@ -51,15 +44,37 @@ class AuditExtension extends SimpleExtension
      */
     public function onLoginFailure(AccessControlEvent $event)
     {
-        $context = [
-            'datetime' => Carbon::createFromTimestamp($event->getDateTime()),
-            'username' => $event->getUserName(),
-            'address'  => $event->getClientIp(),
-            'target'   => $event->getUri(),
-            'reason'   => $this->getReason($event->getReason()),
-        ];
+        $this->logEvent('Authentication failure', $event);
+    }
 
-        $this->getLogger()->info('Authentication failure: ' . json_encode($context));
+    /**
+     * AccessControlEvents::ACCESS_CHECK_REQUEST event callback.
+     *
+     * @param AccessControlEvent $event
+     */
+    public function onAccessCheckRequest(AccessControlEvent $event)
+    {
+        $this->logEvent('Access check request', $event);
+    }
+
+    /**
+     * AccessControlEvents::ACCESS_CHECK_SUCCESS event callback.
+     *
+     * @param AccessControlEvent $event
+     */
+    public function onAccessCheckSuccess(AccessControlEvent $event)
+    {
+        $this->logEvent('Access check success', $event);
+    }
+
+    /**
+     * AccessControlEvents::ACCESS_CHECK_FAILURE event callback.
+     *
+     * @param AccessControlEvent $event
+     */
+    public function onAccessCheckFailure(AccessControlEvent $event)
+    {
+        $this->logEvent('Access check failure', $event);
     }
 
     /**
@@ -69,6 +84,10 @@ class AuditExtension extends SimpleExtension
     {
         $dispatcher->addListener(AccessControlEvents::LOGIN_SUCCESS, [$this, 'onLoginSuccess']);
         $dispatcher->addListener(AccessControlEvents::LOGIN_FAILURE, [$this, 'onLoginFailure']);
+
+        $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_REQUEST, [$this, 'onAccessCheckRequest']);
+        $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_SUCCESS, [$this, 'onAccessCheckSuccess']);
+        $dispatcher->addListener(AccessControlEvents::ACCESS_CHECK_FAILURE, [$this, 'onAccessCheckFailure']);
     }
 
     /**
@@ -164,5 +183,41 @@ class AuditExtension extends SimpleExtension
         }
 
         throw new \RuntimeException('Invalid audit reason.');
+    }
+
+    /**
+     * Return a context array.
+     *
+     * @param AccessControlEvent $event
+     *
+     * @return array
+     */
+    private function getContext(AccessControlEvent $event)
+    {
+        return [
+            'datetime' => Carbon::createFromTimestamp($event->getDateTime()),
+            'username' => $event->getUserName(),
+            'address'  => $event->getClientIp(),
+            'target'   => $event->getUri(),
+        ];
+    }
+
+    /**
+     * Log the event.
+     *
+     * @param string             $title
+     * @param AccessControlEvent $event
+     */
+    private function logEvent($title, AccessControlEvent $event)
+    {
+        $config = $this->getConfig();
+
+        if ($config['target']['database']) {
+        }
+        if ($config['target']['syslog']) {
+            $context = $this->getContext($event);
+            $event->getReason() ? $context['reason'] = $this->getReason($event->getReason()) : null;
+            $this->getLogger()->info(sprintf('%s: %s', $title, json_encode($context)));
+        }
     }
 }
