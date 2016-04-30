@@ -1,0 +1,29 @@
+##
+## Audit Extension Configuration
+##
+
+## Target locations
+#
+# Audit logs can be set to both a database table, and/or the operating system log.
+#
+# Logging to the system log (syslog) is system dependent and handled my Monolog.
+#
+target:
+    database: true
+    syslog: true
+
+
+## Event logging
+#
+logging:
+    check:
+        request: false # This should generally only be used when debugging
+        success: true
+        failure: true
+    login:
+        success: true
+        failure: true
+    reset:
+        request: true
+        success: true
+        failure: true
