@@ -1,5 +1,5 @@
 Bolt Audit Logger
 =================
 
-* x.y.z (2016-03-xx)
+* 3.0.0 (2016-04-30)
   * Initial release
